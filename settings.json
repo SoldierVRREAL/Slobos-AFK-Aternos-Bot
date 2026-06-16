@@ -1,87 +1,207 @@
-{
-  "name": "AFK Bot",
-  "bot-account": {
-    "username": "zzlear",
-    "password": "",
-    "type": "offline"
-  },
-  "server": {
-    "ip": "REALZ112.aternos.me",
-    "port": 57164,
-    "version": "",
-    "try-creative": false
-  },
-  "position": {
-    "enabled": true,
-    "x": 0,
-    "y": 100,
-    "z": 0
-  },
-  "utils": {
-    "auto-auth": {
-      "enabled": true,
-      "password": "chalol78"
+const mineflayer = require('mineflayer')
+const { pathfinder } = require('mineflayer-pathfinder')
+
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+const CONFIG = {
+    username: 'zzlear',
+    host: 'REALZ112.aternos.me',
+    port: 57164,
+    version: false,
+
+    autoAuth: {
+        enabled: true,
+        password: 'chalol78',
     },
-    "anti-afk": {
-      "enabled": true,
-      "sneak": true
+
+    position: {
+        enabled: true,
+        x: 0, y: 100, z: 0,
     },
-    "chat-messages": {
-      "enabled": true,
-      "repeat": true,
-      "repeat-delay": 120,
-      "messages": [
-        "You Are a Nigger",
-        "Your Not Safe..!",
-        "nigger!"
-      ]
+
+    antiAfk: {
+        enabled: true,
+        sneak: true,
     },
-    "chat-log": true,
-    "auto-reconnect": true,
-    "auto-reconnect-delay": 2000,
-    "max-reconnect-delay": 120000
-  },
-  "movement": {
-    "enabled": true,
-    "circle-walk": {
-      "enabled": true,
-      "radius": 4,
-      "speed": 3000
+
+    chatMessages: {
+        enabled: true,
+        repeat: true,
+        repeatDelay: 120,        // seconds
+        messages: ['hi', 'sup', 'skip!'],
     },
-    "look-around": {
-      "enabled": true,
-      "interval": 5000
+
+    movement: {
+        circleWalk: { enabled: true, radius: 4, speed: 3000 },
+        lookAround: { enabled: true, interval: 5000 },
+        randomJump: { enabled: true, interval: 10000 },
     },
-    "random-jump": {
-      "enabled": true,
-      "interval": 10000
-    }
-  },
-  "modules": {
-    "avoidMobs": true,
-    "combat": true,
-    "beds": false,
-    "chat": true,
-    "console-commands": true
-  },
-  "combat": {
-    "attack-mobs": true,
-    "auto-eat": true
-  },
-  "beds": {
-    "pick-up-day": false,
-    "place-night": false
-  },
-  "discord": {
-    "enabled": false,
-    "webhookUrl": "YOUR_DISCORD_WEBHOOK_URL_HERE",
-    "events": {
-      "connect": true,
-      "disconnect": true,
-      "chat": false
-    }
-  },
-  "chat": {
-    "respond": true
-  }
+
+    combat: {
+        attackMobs: true,
+        autoEat: true,
+    },
+
+    autoReconnect: true,
+    reconnectDelay: 2000,
+    maxReconnectDelay: 120000,
+
+    chatLog: true,
 }
+// ─────────────────────────────────────────────────────────────────────────────
+
+let reconnectDelay = CONFIG.reconnectDelay
+let timers = []
+
+function clearTimers() {
+    timers.forEach(t => clearInterval(t))
+    timers = []
+}
+
+function ts() {
+    return new Date().toLocaleTimeString()
+}
+
+function createBot() {
+    console.log(`[${ts()}] Connecting to ${CONFIG.host}:${CONFIG.port} as ${CONFIG.username}...`)
+
+    const bot = mineflayer.createBot({
+        host: CONFIG.host,
+        port: CONFIG.port,
+        username: CONFIG.username,
+        version: CONFIG.version || undefined,
+        auth: 'offline',
+    })
+
+    bot.loadPlugin(pathfinder)
+
+    // ── Spawn ────────────────────────────────────────────────────────────────
+    bot.once('spawn', () => {
+        console.log(`[${ts()}] Bot spawned!`)
+        reconnectDelay = CONFIG.reconnectDelay // reset delay on success
+
+        // Auto-auth (/login)
+        if (CONFIG.autoAuth.enabled) {
+            bot.chat(`/login ${CONFIG.autoAuth.password}`)
+            console.log(`[${ts()}] Sent /login`)
+        }
+
+        // Teleport to position
+        if (CONFIG.position.enabled) {
+            setTimeout(() => {
+                bot.chat(`/tp ${CONFIG.username} ${CONFIG.position.x} ${CONFIG.position.y} ${CONFIG.position.z}`)
+                console.log(`[${ts()}] Teleported to position`)
+            }, 2000)
+        }
+
+        // Anti-AFK sneak toggle
+        if (CONFIG.antiAfk.enabled && CONFIG.antiAfk.sneak) {
+            let sneaking = false
+            timers.push(setInterval(() => {
+                sneaking = !sneaking
+                bot.setControlState('sneak', sneaking)
+            }, 5000))
+        }
+
+        // Random jump
+        if (CONFIG.movement.randomJump.enabled) {
+            timers.push(setInterval(() => {
+                bot.setControlState('jump', true)
+                setTimeout(() => bot.setControlState('jump', false), 500)
+                console.log(`[${ts()}] Anti-AFK jump`)
+            }, CONFIG.movement.randomJump.interval))
+        }
+
+        // Look around randomly
+        if (CONFIG.movement.lookAround.enabled) {
+            timers.push(setInterval(() => {
+                const yaw = Math.random() * Math.PI * 2
+                const pitch = (Math.random() - 0.5) * Math.PI
+                bot.look(yaw, pitch, true)
+            }, CONFIG.movement.lookAround.interval))
+        }
+
+        // Circle walk
+        if (CONFIG.movement.circleWalk.enabled) {
+            let angle = 0
+            const r = CONFIG.movement.circleWalk.radius
+            timers.push(setInterval(() => {
+                angle += 0.3
+                const dx = Math.cos(angle) * r
+                const dz = Math.sin(angle) * r
+                const target = bot.entity.position.offset(dx, 0, dz)
+                bot.lookAt(target)
+                bot.setControlState('forward', true)
+                setTimeout(() => bot.setControlState('forward', false), 600)
+            }, CONFIG.movement.circleWalk.speed))
+        }
+
+        // Rotating chat messages
+        if (CONFIG.chatMessages.enabled && CONFIG.chatMessages.repeat) {
+            let msgIndex = 0
+            timers.push(setInterval(() => {
+                bot.chat(CONFIG.chatMessages.messages[msgIndex])
+                console.log(`[${ts()}] Sent chat: ${CONFIG.chatMessages.messages[msgIndex]}`)
+                msgIndex = (msgIndex + 1) % CONFIG.chatMessages.messages.length
+            }, CONFIG.chatMessages.repeatDelay * 1000))
+        }
+    })
+
+    // ── Combat: attack nearby hostile mobs ──────────────────────────────────
+    if (CONFIG.combat.attackMobs) {
+        const HOSTILE = new Set([
+            'zombie', 'skeleton', 'creeper', 'spider', 'enderman',
+            'witch', 'blaze', 'slime', 'phantom', 'drowned', 'husk',
+            'pillager', 'ravager', 'vindicator',
+        ])
+
+        timers.push(setInterval(() => {
+            const mob = Object.values(bot.entities).find(e =>
+                e.type === 'mob' && HOSTILE.has(e.name) &&
+                e.position.distanceTo(bot.entity.position) < 5
+            )
+            if (mob) {
+                bot.lookAt(mob.position.offset(0, mob.height, 0))
+                bot.attack(mob)
+                console.log(`[${ts()}] Attacking ${mob.name}`)
+            }
+        }, 1000))
+    }
+
+    // ── Auto-eat ─────────────────────────────────────────────────────────────
+    if (CONFIG.combat.autoEat) {
+        bot.on('health', () => {
+            if (bot.food < 16 && !bot.pathfinder?.isMoving?.()) {
+                bot.chat('/eat') // fallback if plugin not loaded
+            }
+        })
+    }
+
+    // ── Chat log ─────────────────────────────────────────────────────────────
+    if (CONFIG.chatLog) {
+        bot.on('chat', (username, message) => {
+            if (username === bot.username) return
+            console.log(`[${ts()}] <${username}> ${message}`)
+        })
+    }
+
+    // ── Disconnect / reconnect ───────────────────────────────────────────────
+    bot.on('kicked', (reason) => {
+        console.log(`[${ts()}] Kicked: ${JSON.stringify(reason)}`)
+    })
+
+    bot.on('end', (reason) => {
+        clearTimers()
+        console.log(`[${ts()}] Disconnected: ${reason}`)
+        if (CONFIG.autoReconnect) {
+            console.log(`[${ts()}] Reconnecting in ${reconnectDelay / 1000}s...`)
+            setTimeout(createBot, reconnectDelay)
+            reconnectDelay = Math.min(reconnectDelay * 2, CONFIG.maxReconnectDelay)
+        }
+    })
+
+    bot.on('error', (err) => {
+        console.log(`[${ts()}] Error: ${err.message}`)
+    })
+}
+
+createBot()
